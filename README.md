@@ -17,7 +17,14 @@
 
 ## 项目依赖
 
-本仓库本身只是一份操作手册（README），实际起作用的是下面这个上游项目的发布包。由于原有脚本运行 URL 已经过期，本仓库已经内置 `vohive-release-1.5.5.zip`，部署时先下载这个 zip 包，解压后再运行里面的脚本。
+本仓库本身只是一份操作手册（README），实际起作用的是上游 **[iniwex5/vohive-release](https://github.com/iniwex5/vohive-release)** 的发布资产。上游仓库仍在，但其最新 release `v1.5.5` **已无可下载的二进制 asset**（`vohive_v1.5.5_linux_<arch>` 实测 HTTP 404，release 的 assets 列表为空），在线安装脚本会在「下载二进制」那步失败。为此本仓库内置了两份可离线使用的资产：
+
+| 内置包 | 内容 | 适用架构 | 是否联网 |
+|---|---|---|---|
+| `vohive-release-1.5.5.zip` | 在线安装脚本，运行时按架构到上游 release 拉取二进制 | arm64 + amd64 自动检测 | ❗ 上游二进制已 404，**当前会失败**，留作上游修复后使用 |
+| `vohive-backup.tar.gz` | **离线恢复包**：内置 vohive 二进制（sha1 `ee16a5c0cd04505df43805fc81838f3e20b16aee`，与 backup `install.sh` 注释中记录的原版 sha1 一致）+ `install.sh` + `vohive.service` + `mcc-mnc-table.json` | **x86_64（Intel / 方案 B）** | ✅ 完全离线，**当前推荐路径** |
+
+> ⚠️ 上游二进制 404 后，**Apple Silicon（方案 A，arm64）暂无内置离线二进制**：可继续试 `vohive-release-1.5.5.zip` 在线方式（等上游修复 asset），或自行备一份 `vohive_<ver>_linux_arm64` 后参照 `vohive-backup.tar.gz` 里的 `install.sh` 离线安装。Intel Mac（方案 B）直接用 `vohive-backup.tar.gz` 即可全程离线部署。
 
 ### [iniwex5/vohive-release](https://github.com/iniwex5/vohive-release)
 
@@ -185,7 +192,23 @@ lsusb
 
 ### 6. 一键部署 vohive 平台
 
-模块身份改完且直通稳定后，在 VM 里执行：
+模块身份改完且直通稳定后，在 VM 里部署 vohive。两种方式选其一：
+
+#### 方式一（推荐·离线）：内置 `vohive-backup.tar.gz`（仅 x86_64 / 方案 B）
+
+适合 Intel Mac 建的 amd64 VM，**全程不联网**，规避上游二进制 404：
+
+```bash
+sudo apt-get update && sudo apt-get install -y wget
+wget -O vohive-backup.tar.gz \
+  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-backup.tar.gz
+tar -xzf vohive-backup.tar.gz
+cd vohive-backup
+sudo bash install.sh
+```
+脚本会校验架构、把内置二进制 / 运营商表 / 默认配置 / systemd 单元一并部署到位，**不再联网下载二进制**。
+
+#### 方式二（在线）：`vohive-release-1.5.5.zip`（arm64 / amd64 自动检测）
 
 ```bash
 sudo apt-get update && sudo apt-get install -y unzip
@@ -195,12 +218,14 @@ unzip -o vohive-release-1.5.5.zip
 cd vohive-release-1.5.5
 bash install.sh
 ```
+> ⚠️ 此方式在「下载二进制」那步依赖上游 `iniwex5/vohive-release` 的 release asset；**上游 v1.5.5 二进制已 404，当前大概率失败**，此时方案 B 请改用方式一，方案 A 需自备 arm64 二进制。
 
-脚本会：
-- 下载 `vohive_<版本>_linux_<arch>` 二进制到 `/opt/vohive/bin/vohive`
-- 生成配置 `/opt/vohive/config/config.yaml`（默认 Web 账号密码 `admin / admin`）
+#### 部署结果（两方式一致）
+
+- 二进制 → `/opt/vohive/bin/vohive`
+- 配置 → `/opt/vohive/config/config.yaml`（默认 Web 账号 `admin / admin`）
 - 注册 systemd 服务 `vohive.service` 并启动
-- 数据/日志在 `/opt/vohive/data`、`/opt/vohive/logs`
+- 数据/日志 → `/opt/vohive/data`、`/opt/vohive/logs`
 
 #### 访问后台
 
@@ -302,12 +327,14 @@ echo 'AT+QCFG="usbcfg",0x2C7C,0x0125,1,1,1,1,1,0,0' | socat - /dev/ttyUSB2,crnl
 echo 'AT+CFUN=1,1' | socat - /dev/ttyUSB2,crnl
 lsusb   # → 2c7c:0125 Quectel EC25
 # → UTM 把直通重新绑到 2c7c:0125 / 物理端口
-sudo apt-get install -y unzip
-curl -L -o vohive-release-1.5.5.zip \
-  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-release-1.5.5.zip
-unzip -o vohive-release-1.5.5.zip
-cd vohive-release-1.5.5
-bash install.sh
+# 部署 vohive（二选一）：
+#  · 方案 B(Intel/amd64，离线推荐)：下 vohive-backup.tar.gz → tar -xzf → sudo bash install.sh
+#  · 方案 A(Apple Silicon/arm64，在线)：下 vohive-release-1.5.5.zip → unzip → bash install.sh（上游二进制 404 时会失败）
+wget -O vohive-backup.tar.gz \
+  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-backup.tar.gz
+tar -xzf vohive-backup.tar.gz
+cd vohive-backup
+sudo bash install.sh
 # → Mac 浏览器开 http://<VM-IP>:7575，admin/admin
 ```
 
